@@ -169,6 +169,8 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
                 e->cx = pKF->cx;
                 e->cy = pKF->cy;
                 e->bf = pKF->mbf;
+                e->alpha = (pKF->mDistCoef).at<float>(0);
+                e->beta = (pKF->mDistCoef).at<float>(1);
 
                 optimizer.addEdge(e);
             }
@@ -349,6 +351,8 @@ int Optimizer::PoseOptimization(Frame *pFrame)
                 e->cx = pFrame->cx;
                 e->cy = pFrame->cy;
                 e->bf = pFrame->mbf;
+                e->alpha = (pFrame->mDistCoef).at<float>(0);
+                e->beta = (pFrame->mDistCoef).at<float>(1);
                 cv::Mat Xw = pMP->GetWorldPos();
                 e->Xw[0] = Xw.at<float>(0);
                 e->Xw[1] = Xw.at<float>(1);
@@ -648,6 +652,8 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
                     e->cx = pKFi->cx;
                     e->cy = pKFi->cy;
                     e->bf = pKFi->mbf;
+                    e->alpha = (pKFi->mDistCoef).at<float>(0);
+                    e->beta = (pKFi->mDistCoef).at<float>(1);
 
                     optimizer.addEdge(e);
                     vpEdgesStereo.push_back(e);

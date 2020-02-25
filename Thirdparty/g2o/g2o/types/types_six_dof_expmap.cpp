@@ -203,7 +203,8 @@ Vector2d EdgeSE3ProjectXYZ::cam_project(const Vector3d & trans_xyz) const{
 
 
 Vector3d EdgeStereoSE3ProjectXYZ::cam_project(const Vector3d & trans_xyz, const float &bf) const{
-  const float invz = 1.0f/trans_xyz[2];
+  const float imd = sqrt( beta*(trans_xyz[0]*trans_xyz[0]+trans_xyz[1]*trans_xyz[1])+trans_xyz[2]*trans_xyz[2] );
+  const float invz = 1.0f / ( alpha*imd+(1-alpha)*trans_xyz[2] );
   Vector3d res;
   res[0] = trans_xyz[0]*invz*fx + cx;
   res[1] = trans_xyz[1]*invz*fy + cy;
@@ -252,40 +253,64 @@ void EdgeStereoSE3ProjectXYZ::linearizeOplus() {
   double x = xyz_trans[0];
   double y = xyz_trans[1];
   double z = xyz_trans[2];
+  double x_2 = x*x;
+  double y_2 = y*y;
   double z_2 = z*z;
 
-  _jacobianOplusXi(0,0) = -fx*R(0,0)/z+fx*x*R(2,0)/z_2;
-  _jacobianOplusXi(0,1) = -fx*R(0,1)/z+fx*x*R(2,1)/z_2;
-  _jacobianOplusXi(0,2) = -fx*R(0,2)/z+fx*x*R(2,2)/z_2;
+  double rho = sqrt( beta*(x_2+y_2)+z_2 );
+  double eta = (1-alpha)*z + alpha*rho;
+  double eta_2 = eta*eta;
 
-  _jacobianOplusXi(1,0) = -fy*R(1,0)/z+fy*y*R(2,0)/z_2;
-  _jacobianOplusXi(1,1) = -fy*R(1,1)/z+fy*y*R(2,1)/z_2;
-  _jacobianOplusXi(1,2) = -fy*R(1,2)/z+fy*y*R(2,2)/z_2;
+  Matrix<double,3,3> tmp;
 
-  _jacobianOplusXi(2,0) = _jacobianOplusXi(0,0)-bf*R(2,0)/z_2;
-  _jacobianOplusXi(2,1) = _jacobianOplusXi(0,1)-bf*R(2,1)/z_2;
-  _jacobianOplusXi(2,2) = _jacobianOplusXi(0,2)-bf*R(2,2)/z_2;
+  // tmp(0,0) = fx;
+  // tmp(0,1) = 0;
+  // tmp(0,2) = -x/z*fx;
 
-  _jacobianOplusXj(0,0) =  x*y/z_2 *fx;
-  _jacobianOplusXj(0,1) = -(1+(x*x/z_2)) *fx;
-  _jacobianOplusXj(0,2) = y/z *fx;
-  _jacobianOplusXj(0,3) = -1./z *fx;
-  _jacobianOplusXj(0,4) = 0;
-  _jacobianOplusXj(0,5) = x/z_2 *fx;
+  // tmp(1,0) = 0;
+  // tmp(1,1) = fy;
+  // tmp(1,2) = -y/z*fy;
 
-  _jacobianOplusXj(1,0) = (1+y*y/z_2) *fy;
-  _jacobianOplusXj(1,1) = -x*y/z_2 *fy;
-  _jacobianOplusXj(1,2) = -x/z *fy;
-  _jacobianOplusXj(1,3) = 0;
-  _jacobianOplusXj(1,4) = -1./z *fy;
-  _jacobianOplusXj(1,5) = y/z_2 *fy;
+  // tmp(2,0) = 0;
+  // tmp(2,1) = 0;
+  // tmp(2,2) = -bf/z;
 
-  _jacobianOplusXj(2,0) = _jacobianOplusXj(0,0)-bf*y/z_2;
-  _jacobianOplusXj(2,1) = _jacobianOplusXj(0,1)+bf*x/z_2;
-  _jacobianOplusXj(2,2) = _jacobianOplusXj(0,2);
-  _jacobianOplusXj(2,3) = _jacobianOplusXj(0,3);
-  _jacobianOplusXj(2,4) = 0;
-  _jacobianOplusXj(2,5) = _jacobianOplusXj(0,5)-bf/z_2;
+  // _jacobianOplusXi =  -1./z * tmp * T.rotation().toRotationMatrix();
+
+  tmp(0,0) = fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) );
+  tmp(0,1) = fx * (alpha*beta*x*y) / (eta_2*rho);
+  tmp(0,2) = fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+
+  tmp(1,0) = fy * (alpha*beta*x*y) / (eta_2*rho);
+  tmp(1,1) = fy * ( -1/eta + (alpha*beta*y_2) / (eta_2*rho) );
+  tmp(1,2) = fy * y * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+
+  tmp(2,0) = tmp(0,0) - bf * y * (alpha*beta) / (eta_2*rho);
+  tmp(2,1) = tmp(0,1) - bf * x * (alpha*beta) / (eta_2*rho);
+  tmp(2,2) = tmp(0,2) - bf * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+
+  _jacobianOplusXi = tmp * T.rotation().toRotationMatrix();
+
+  _jacobianOplusXj(0,0) = -z * fx * (alpha*beta*x*y) / (eta_2*rho) + y * fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXj(0,1) = z * fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) ) - x * fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXj(0,2) = -y * fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) ) + x * fx * (alpha*beta*x*y) / (eta_2*rho);
+  _jacobianOplusXj(0,3) = fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) );
+  _jacobianOplusXj(0,4) = fx * (alpha*beta*x*y) / (eta_2*rho);
+  _jacobianOplusXj(0,5) = fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+
+  _jacobianOplusXj(1,0) = -z * fy * ( -1/eta + (alpha*beta*y_2) / (eta_2*rho) ) + y * fy * y * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXj(1,1) = z * fy * (alpha*beta*x*y) / (eta_2*rho) - x * fy * y * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXj(1,2) = -y * fy * (alpha*beta*x*y) / (eta_2*rho) + x * fy * ( -1/eta + (alpha*beta*y_2) / (eta_2*rho) );
+  _jacobianOplusXj(1,3) = fy * (alpha*beta*x*y) / (eta_2*rho);
+  _jacobianOplusXj(1,4) = fy * ( -1/eta + (alpha*beta*y_2) / (eta_2*rho) );
+  _jacobianOplusXj(1,5) = fy * y * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+
+  _jacobianOplusXj(2,0) = y * tmp(2,2) - z * tmp(2,1);
+  _jacobianOplusXj(2,1) = z * tmp(2,0) - x * tmp(2,2);
+  _jacobianOplusXj(2,2) = x * tmp(2,1) - y * tmp(2,0);
+  _jacobianOplusXj(2,3) = tmp(2,0);
+  _jacobianOplusXj(2,4) = tmp(2,1);
+  _jacobianOplusXj(2,5) = tmp(2,2);
 }
 
 
@@ -369,7 +394,8 @@ Vector2d EdgeSE3ProjectXYZOnlyPose::cam_project(const Vector3d & trans_xyz) cons
 
 
 Vector3d EdgeStereoSE3ProjectXYZOnlyPose::cam_project(const Vector3d & trans_xyz) const{
-  const float invz = 1.0f/trans_xyz[2];
+  const float imd = sqrt( beta*(trans_xyz[0]*trans_xyz[0]+trans_xyz[1]*trans_xyz[1])+trans_xyz[2]*trans_xyz[2] );
+  const float invz = 1.0f / ( alpha*imd+(1-alpha)*trans_xyz[2] );
   Vector3d res;
   res[0] = trans_xyz[0]*invz*fx + cx;
   res[1] = trans_xyz[1]*invz*fy + cy;
@@ -410,29 +436,44 @@ void EdgeStereoSE3ProjectXYZOnlyPose::linearizeOplus() {
 
   double x = xyz_trans[0];
   double y = xyz_trans[1];
+  double z = xyz_trans[2];
   double invz = 1.0/xyz_trans[2];
   double invz_2 = invz*invz;
+  double x_2 = x*x;
+  double y_2 = y*y;
+  double z_2 = z*z;
 
-  _jacobianOplusXi(0,0) =  x*y*invz_2 *fx;
-  _jacobianOplusXi(0,1) = -(1+(x*x*invz_2)) *fx;
-  _jacobianOplusXi(0,2) = y*invz *fx;
-  _jacobianOplusXi(0,3) = -invz *fx;
-  _jacobianOplusXi(0,4) = 0;
-  _jacobianOplusXi(0,5) = x*invz_2 *fx;
+  double rho = sqrt( beta*(x_2+y_2)+z_2 );
+  double eta = (1-alpha)*z + alpha*rho;
+  double eta_2 = eta*eta;
 
-  _jacobianOplusXi(1,0) = (1+y*y*invz_2) *fy;
-  _jacobianOplusXi(1,1) = -x*y*invz_2 *fy;
-  _jacobianOplusXi(1,2) = -x*invz *fy;
-  _jacobianOplusXi(1,3) = 0;
-  _jacobianOplusXi(1,4) = -invz *fy;
-  _jacobianOplusXi(1,5) = y*invz_2 *fy;
+  _jacobianOplusXi(0,0) = -z * fx * (alpha*beta*x*y) / (eta_2*rho) + y * fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXi(0,1) = z * fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) ) - x * fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXi(0,2) = -y * fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) ) + x * fx * (alpha*beta*x*y) / (eta_2*rho);
+  _jacobianOplusXi(0,3) = fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) );
+  _jacobianOplusXi(0,4) = fx * (alpha*beta*x*y) / (eta_2*rho);
+  _jacobianOplusXi(0,5) = fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
 
-  _jacobianOplusXi(2,0) = _jacobianOplusXi(0,0)-bf*y*invz_2;
-  _jacobianOplusXi(2,1) = _jacobianOplusXi(0,1)+bf*x*invz_2;
-  _jacobianOplusXi(2,2) = _jacobianOplusXi(0,2);
-  _jacobianOplusXi(2,3) = _jacobianOplusXi(0,3);
-  _jacobianOplusXi(2,4) = 0;
-  _jacobianOplusXi(2,5) = _jacobianOplusXi(0,5)-bf*invz_2;
+  _jacobianOplusXi(1,0) = -z * fy * ( -1/eta + (alpha*beta*y_2) / (eta_2*rho) ) + y * fy * y * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXi(1,1) = z * fy * (alpha*beta*x*y) / (eta_2*rho) - x * fy * y * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXi(1,2) = -y * fy * (alpha*beta*x*y) / (eta_2*rho) + x * fy * ( -1/eta + (alpha*beta*y_2) / (eta_2*rho) );
+  _jacobianOplusXi(1,3) = fy * (alpha*beta*x*y) / (eta_2*rho);
+  _jacobianOplusXi(1,4) = fy * ( -1/eta + (alpha*beta*y_2) / (eta_2*rho) );
+  _jacobianOplusXi(1,5) = fy * y * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+
+  Matrix<double,3,3> tmp;
+  tmp(0,0) = fx * ( -1/eta + (alpha*beta*x_2) / (eta_2*rho) );
+  tmp(0,1) = fx * (alpha*beta*x*y) / (eta_2*rho);
+  tmp(0,2) = fx * x * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  tmp(2,0) = tmp(0,0) - bf * y * (alpha*beta) / (eta_2*rho);
+  tmp(2,1) = tmp(0,1) - bf * x * (alpha*beta) / (eta_2*rho);
+  tmp(2,2) = tmp(0,2) - bf * ( 1-alpha+(alpha*z)/rho ) / eta_2;
+  _jacobianOplusXi(2,0) = y * tmp(2,2) - z * tmp(2,1);
+  _jacobianOplusXi(2,1) = z * tmp(2,0) - x * tmp(2,2);
+  _jacobianOplusXi(2,2) = x * tmp(2,1) - y * tmp(2,0);
+  _jacobianOplusXi(2,3) = tmp(2,0);
+  _jacobianOplusXi(2,4) = tmp(2,1);
+  _jacobianOplusXi(2,5) = tmp(2,2);
 }
 
 

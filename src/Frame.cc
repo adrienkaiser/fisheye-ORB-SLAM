@@ -468,6 +468,16 @@ void Frame::ComputeBoW()
     }
 }
 
+float computeZEUCM(float alpha, float beta, float x, float y)
+{
+    // equ (37) of the EUCM paper https://pagesperso.ls2n.fr/~martinet-p/publis/2016/RA-L16Bogdan.pdf
+    float distanceR2 = x*x + y*y;
+    float z = (1-beta*alpha*alpha*distanceR2) / (alpha*sqrt(1-(2*alpha-1)*beta*distanceR2) + 1-alpha);
+    if( isnan(z) )
+        z = (1-beta*alpha*alpha*distanceR2) / (1-alpha);
+    return z;
+}
+
 void Frame::UndistortKeyPoints()
 {
     if(mDistCoef.at<float>(0)==0.0)
@@ -515,10 +525,7 @@ void Frame::UndistortKeyPoints()
     {
         mvP3M[i].x = (mvKeys[i].pt.x-mcx) * minvfx;
         mvP3M[i].y = (mvKeys[i].pt.y-mcy) * minvfy;
-        float distanceR2 = mvP3M[i].x*mvP3M[i].x + mvP3M[i].y*mvP3M[i].y;
-        mvP3M[i].z = (1-beta*alpha*alpha*distanceR2) / (alpha*sqrt(1-(2*alpha-1)*beta*distanceR2) + 1-alpha);
-        if( isnan(mvP3M[i].z) )
-            mvP3M[i].z = (1-beta*alpha*alpha*distanceR2) / (1-alpha);
+        mvP3M[i].z = computeZEUCM(alpha, beta, mvP3M[i].x, mvP3M[i].y);
         
         cv::KeyPoint kp = mvKeys[i];
         kp.pt.x=mvKeys[i].pt.x;
@@ -702,7 +709,10 @@ void Frame::ComputeStereoMatches()
             // Re-scaled coordinate
             float bestuR = mvScaleFactors[kpL.octave]*((float)scaleduR0+(float)bestincR+deltaR);
 
-            float disparity = (uL-bestuR);
+            float uLUndist = (uL / mvP3M[iL].z) + cx * (1 - 1 / mvP3M[iL].z);
+            float bestuRz = computeZEUCM(mDistCoef.at<float>(0), mDistCoef.at<float>(1), (bestuR-cx) * invfx, (vL-cy) * invfy);
+            float bestuRUndist = (bestuR/bestuRz) + cx * (1-1/bestuRz);
+            float disparity = (uLUndist - bestuRUndist);
 
             if(disparity>=minD && disparity<maxD)
             {
@@ -763,10 +773,8 @@ cv::Mat Frame::UnprojectStereo(const int &i)
     const float z = mvDepth[i];
     if(z>0)
     {
-        const float u = mvKeysUn[i].pt.x;
-        const float v = mvKeysUn[i].pt.y;
-        const float x = (u-cx)*z*invfx;
-        const float y = (v-cy)*z*invfy;
+        const float x = mvP3M[i].x / mvP3M[i].z * z;
+        const float y = mvP3M[i].y / mvP3M[i].z * z;
         cv::Mat x3Dc = (cv::Mat_<float>(3,1) << x, y, z);
         return mRwc*x3Dc+mOw;
     }

@@ -617,10 +617,8 @@ cv::Mat KeyFrame::UnprojectStereo(int i)
     const float z = mvDepth[i];
     if(z>0)
     {
-        const float u = mvKeys[i].pt.x;
-        const float v = mvKeys[i].pt.y;
-        const float x = (u-cx)*z*invfx;
-        const float y = (v-cy)*z*invfy;
+        const float x = mvP3M[i].x / mvP3M[i].z * z;
+        const float y = mvP3M[i].y / mvP3M[i].z * z;
         cv::Mat x3Dc = (cv::Mat_<float>(3,1) << x, y, z);
 
         unique_lock<mutex> lock(mMutexPose);
